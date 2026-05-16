@@ -8,6 +8,7 @@ function init() {
 			width: "30rem",
 		});
 
+		const bellIcon = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZjRiODZhIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNNiA4YTYgNiAwIDAgMSAxMiAwYzAgNyAzIDkgMyA5SDNzMy0yIDMtOSIvPjxwYXRoIGQ9Ik0xMC4zIDIxYTEuOTQgMS45NCAwIDAgMCAzLjQgMCIvPjwvc3ZnPg==";
 		const fields = {
 			baseUrl: ctx.fieldRef($storage.get("asunatracks-sync:base-url") || "https://asunatracks.space"),
 			username: ctx.fieldRef(""),
@@ -16,7 +17,6 @@ function init() {
 			skipAdult: ctx.fieldRef($storage.get("asunatracks-sync:skip-adult") == null ? true : !!$storage.get("asunatracks-sync:skip-adult")),
 			suppressBadge: ctx.fieldRef(!!($storage.get("asunatracks-sync:suppress-badge") || false)),
 		};
-
 		const state = {
 			token: ctx.state($storage.get("asunatracks-sync:token") || null),
 			user: ctx.state($storage.get("asunatracks-sync:user") || null),
@@ -26,7 +26,6 @@ function init() {
 			success: ctx.state($storage.get("asunatracks-sync:success-count") || 0),
 			fail: ctx.state($storage.get("asunatracks-sync:fail-count") || 0),
 		};
-
 		const log = {
 			id: "asunatracks-sync:logs",
 			open: ctx.state(false),
@@ -35,464 +34,81 @@ function init() {
 				rows.push([`${new Date().toISOString().slice(0, 19)} | ${level.padEnd(7, " ")} | ${message}`, level]);
 				$storage.set(this.id, rows);
 			},
-			entries() {
-				return this.open.get() ? ($storage.get(this.id) || []) : [];
-			},
-			clear() {
-				$storage.set(this.id, []);
-				this.push("Info", "Log cleared");
-			},
+			entries() { return this.open.get() ? ($storage.get(this.id) || []) : []; },
+			clear() { $storage.set(this.id, []); this.push("Info", "Log cleared"); },
 		};
-
 		const notifications = {
 			id: "asunatracks-sync:notifications",
 			open: ctx.state(false),
 			unreads: ctx.state(($storage.get("asunatracks-sync:notifications") || []).filter((entry) => entry.unread).length),
-			entries() {
-				return this.open.get() ? ($storage.get(this.id) || []) : [];
-			},
-			refreshUnread(rows) {
-				this.unreads.set(rows.filter((entry) => entry.unread).length);
-			},
+			entries() { return this.open.get() ? ($storage.get(this.id) || []) : []; },
+			refreshUnread(rows) { this.unreads.set(rows.filter((entry) => entry.unread).length); },
 			push(entry) {
 				const rows = ($storage.get(this.id) || []).slice(-49);
 				rows.push({ ...entry, id: `${Date.now()}-${Math.random()}`, timestamp: Date.now(), unread: true });
-				$storage.set(this.id, rows);
-				this.refreshUnread(rows);
+				$storage.set(this.id, rows); this.refreshUnread(rows);
 			},
-			markAllRead() {
-				const rows = ($storage.get(this.id) || []).map((entry) => ({ ...entry, unread: false }));
-				$storage.set(this.id, rows);
-				this.refreshUnread(rows);
-			},
-			markRead(id) {
-				const rows = ($storage.get(this.id) || []).map((entry) => (entry.id === id ? { ...entry, unread: false } : entry));
-				$storage.set(this.id, rows);
-				this.refreshUnread(rows);
-			},
-			delete(id) {
-				const rows = ($storage.get(this.id) || []).filter((entry) => entry.id !== id);
-				$storage.set(this.id, rows);
-				this.refreshUnread(rows);
-			},
-			deleteAll() {
-				$storage.set(this.id, []);
-				this.unreads.set(0);
-			},
+			markAllRead() { const rows = ($storage.get(this.id) || []).map((entry) => ({ ...entry, unread: false })); $storage.set(this.id, rows); this.refreshUnread(rows); },
+			markRead(id) { const rows = ($storage.get(this.id) || []).map((entry) => (entry.id === id ? { ...entry, unread: false } : entry)); $storage.set(this.id, rows); this.refreshUnread(rows); },
+			delete(id) { const rows = ($storage.get(this.id) || []).filter((entry) => entry.id !== id); $storage.set(this.id, rows); this.refreshUnread(rows); },
+			deleteAll() { $storage.set(this.id, []); this.unreads.set(0); },
 		};
-
-		function cleanBaseUrl() {
-			let value = String(fields.baseUrl.current || "https://asunatracks.space").trim();
-			if (!/^https?:\/\//i.test(value)) value = `https://${value}`;
-			return value.replace(/\/+$/, "");
-		}
-
-		function setToken(token, user) {
-			$storage.set("asunatracks-sync:token", token || null);
-			$storage.set("asunatracks-sync:user", user || null);
-			state.token.set(token || null);
-			state.user.set(user || null);
-		}
-
-		function unwrap(value) {
-			if (value == null) return undefined;
-			if (typeof value === "object") {
-				const inner = value.valueOf ? value.valueOf() : value;
-				return inner == null ? undefined : inner;
-			}
-			return value;
-		}
-
-		function absoluteUrl(value) {
-			if (!value) return "";
-			if (/^https?:\/\//i.test(value)) return value;
-			return `${cleanBaseUrl()}${String(value).startsWith("/") ? value : `/${value}`}`;
-		}
-
-		function updateCounters(ok) {
-			const key = ok ? "success" : "fail";
-			const next = state[key].get() + 1;
-			state[key].set(next);
-			$storage.set(`asunatracks-sync:${ok ? "success" : "fail"}-count`, next);
-		}
-
+		function cleanBaseUrl() { let value = String(fields.baseUrl.current || "https://asunatracks.space").trim(); if (!/^https?:\/\//i.test(value)) value = `https://${value}`; return value.replace(/\/+$/, ""); }
+		function setToken(token, user) { $storage.set("asunatracks-sync:token", token || null); $storage.set("asunatracks-sync:user", user || null); state.token.set(token || null); state.user.set(user || null); }
+		function unwrap(value) { if (value == null) return undefined; if (typeof value === "object") { const inner = value.valueOf ? value.valueOf() : value; return inner == null ? undefined : inner; } return value; }
+		function absoluteUrl(value) { if (!value) return ""; if (/^https?:\/\//i.test(value)) return value; return `${cleanBaseUrl()}${String(value).startsWith("/") ? value : `/${value}`}`; }
+		function updateCounters(ok) { const key = ok ? "success" : "fail"; const next = state[key].get() + 1; state[key].set(next); $storage.set(`asunatracks-sync:${ok ? "success" : "fail"}-count`, next); }
 		async function api(path, init) {
 			const headers = { "Content-Type": "application/json", ...(((init || {}).headers) || {}) };
-			const token = state.token.get();
-			if (token) headers.Authorization = `Bearer ${token}`;
-			const res = await ctx.fetch(`${cleanBaseUrl()}${path}`, { ...(init || {}), headers });
-			updateCounters(res.ok);
-			if (!res.ok) {
-				let message = res.statusText;
-				try {
-					const body = await res.json();
-					message = body && (body.error || body.message) ? body.error || body.message : message;
-				} catch {}
-				if (res.status === 401) setToken(null, null);
-				throw new Error(message || `Request failed (${res.status})`);
-			}
+			const token = state.token.get(); if (token) headers.Authorization = `Bearer ${token}`;
+			const res = await ctx.fetch(`${cleanBaseUrl()}${path}`, { ...(init || {}), headers }); updateCounters(res.ok);
+			if (!res.ok) { let message = res.statusText; try { const body = await res.json(); message = body && (body.error || body.message) ? body.error || body.message : message; } catch {} if (res.status === 401) setToken(null, null); throw new Error(message || `Request failed (${res.status})`); }
 			return res;
 		}
-
 		async function login() {
-			state.busy.set(true);
-			state.lastError.set(null);
-			state.status.set("Signing in...");
-			try {
-				$storage.set("asunatracks-sync:base-url", cleanBaseUrl());
-				const res = await api("/public/api/auth/login", {
-					method: "POST",
-					body: JSON.stringify({ username: fields.username.current, password: fields.password.current }),
-				});
-				const data = await res.json();
-				setToken(data.token, data.user || null);
-				fields.password.setValue("");
-				state.status.set(`Signed in as ${(data.user && data.user.username) || "AsunaTracks"}`);
-				log.push("Success", "Signed in to AsunaTracks");
-				ctx.toast.success("Signed in to AsunaTracks");
-			} catch (err) {
-				state.lastError.set(err.message);
-				state.status.set("Sign in failed");
-				log.push("Error", `Sign in failed: ${err.message}`);
-			} finally {
-				state.busy.set(false);
-			}
+			state.busy.set(true); state.lastError.set(null); state.status.set("Signing in...");
+			try { $storage.set("asunatracks-sync:base-url", cleanBaseUrl()); const res = await api("/public/api/auth/login", { method: "POST", body: JSON.stringify({ username: fields.username.current, password: fields.password.current }) }); const data = await res.json(); setToken(data.token, data.user || null); fields.password.setValue(""); state.status.set(`Signed in as ${(data.user && data.user.username) || "AsunaTracks"}`); log.push("Success", "Signed in to AsunaTracks"); ctx.toast.success("Signed in to AsunaTracks"); }
+			catch (err) { state.lastError.set(err.message); state.status.set("Sign in failed"); log.push("Error", `Sign in failed: ${err.message}`); }
+			finally { state.busy.set(false); }
 		}
-
-		async function logout() {
-			state.busy.set(true);
-			try {
-				if (state.token.get()) await api("/public/api/auth/logout", { method: "POST" }).catch(() => undefined);
-				setToken(null, null);
-				state.status.set("Signed out");
-				log.push("Info", "Signed out");
-				ctx.toast.info("Signed out of AsunaTracks Sync");
-			} finally {
-				state.busy.set(false);
-			}
-		}
-
-		function toISODate(date) {
-			const year = unwrap(date && date.year);
-			if (!year) return undefined;
-			const month = unwrap(date && date.month) || 1;
-			const day = unwrap(date && date.day) || 1;
-			return new Date(Date.UTC(year, month - 1, day)).toISOString().substring(0, 10);
-		}
-
-		function normalizeStatus(type, status) {
-			if (!status) return undefined;
-			const anime = { CURRENT: "watching", REPEATING: "rewatching", COMPLETED: "completed", PLANNING: "planning", DROPPED: "dropped", PAUSED: "paused" };
-			const manga = { CURRENT: "reading", REPEATING: "rereading", COMPLETED: "completed", PLANNING: "planning", DROPPED: "dropped", PAUSED: "paused" };
-			return type === "anime" ? anime[status] : manga[status];
-		}
-
-		function isCustomSource(mediaId) {
-			return (mediaId || 0) >= 2 ** 31;
-		}
-
-		function anilistEntries(type) {
-			const collection = type === "anime" ? $anilist.getAnimeCollection(false).MediaListCollection : $anilist.getMangaCollection(false).MediaListCollection;
-			return (collection && collection.lists ? collection.lists : [])
-				.flatMap((list) => list.entries || [])
-				.filter((entry) => entry && entry.media && !isCustomSource(entry.media.id));
-		}
-
-		async function mediaForEvent(mediaId) {
-			if (!mediaId) return null;
-			try {
-				const anime = await ctx.anime.getAnimeEntry(mediaId);
-				const entry = anilistEntries("anime").find((item) => item.media.id === mediaId || item.id === (anime.listData && anime.listData.id));
-				if (entry) return { type: "anime", entry };
-			} catch {}
-			const manga = anilistEntries("manga").find((item) => item.media.id === mediaId);
-			return manga ? { type: "manga", entry: manga } : null;
-		}
-
-		function payloadFromEntry(type, entry, overrides) {
-			const malId = unwrap(entry.media && entry.media.idMal);
-			if (!malId) return null;
-			return {
-				media_type: type,
-				mal_id: malId,
-				status: normalizeStatus(type, entry.status),
-				progress: unwrap(entry.progress) || 0,
-				repeat_count: unwrap(entry.repeat) || 0,
-				score: unwrap(entry.score),
-				notes: unwrap(entry.notes),
-				start_date: toISODate(entry.startedAt),
-				finish_date: toISODate(entry.completedAt),
-				...(overrides || {}),
-			};
-		}
-
-		function readableKey(value) {
-			return String(value).replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-		}
-
-		function formatTimestamp(value) {
-			const date = new Date(value);
-			return `${date.toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "numeric" })} ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
-		}
-
-		function notify(title, entry, details) {
-			notifications.push({ title, image: entry.media && entry.media.coverImage ? entry.media.coverImage.large || entry.media.coverImage.medium : undefined, details });
-		}
-
-		async function pushEntry(type, entry, reason, overrides) {
-			if (!state.token.get()) return log.push("Warning", `${reason}: skipped because AsunaTracks is not signed in`);
-			if (fields.skipAdult.current.valueOf() && entry.media && entry.media.isAdult && entry.media.isAdult.valueOf()) return log.push("Warning", `${reason}: skipped adult entry`);
-			if (unwrap(entry.private)) return log.push("Warning", `${reason}: skipped private entry`);
-			const body = payloadFromEntry(type, entry, overrides);
-			if (!body) return log.push("Warning", `${reason}: skipped ${(entry.media && entry.media.title && entry.media.title.userPreferred) || entry.id} because it has no MAL ID`);
-			await api("/public/api/me/list", { method: "POST", body: JSON.stringify(body) });
-			const title = (entry.media && entry.media.title && entry.media.title.userPreferred) || String(body.mal_id);
-			log.push("Success", `${reason}: synced ${title}`);
-			notify(`Updated ${title}`, entry, { Action: reason, Type: type, Status: body.status, Progress: body.progress, Score: body.score, Repeat: body.repeat_count });
-		}
-
-		async function removeEntry(type, entry) {
-			const malId = unwrap(entry.media && entry.media.idMal);
-			if (!state.token.get() || !malId) return;
-			await api("/public/api/me/list/remove", { method: "POST", body: JSON.stringify({ media_type: type, mal_id: malId }) });
-			const title = (entry.media && entry.media.title && entry.media.title.userPreferred) || String(malId);
-			log.push("Success", `delete: removed ${title}`);
-			notify(`Removed ${title}`, entry, { Action: "delete", Type: type, Status: "Deleted" });
-		}
-
-		async function liveSync(action, event, preDataKey, buildOverrides) {
-			if (fields.disableLiveSync.current.valueOf()) {
-				$store.set(preDataKey, null);
-				return log.push("Info", `${action}: live sync is disabled`);
-			}
-			const data = $store.get(preDataKey);
-			$store.set(preDataKey, null);
-			if (!data || data.mediaId !== event.mediaId) return log.push("Warning", `${action}: missing pre-update payload`);
-			const target = await mediaForEvent(event.mediaId);
-			if (!target) return log.push("Warning", `${action}: media not found (${event.mediaId || "unknown"})`);
-			try {
-				await pushEntry(target.type, target.entry, action, buildOverrides(data, target.type));
-				state.status.set(`Last sync: ${(target.entry.media && target.entry.media.title && target.entry.media.title.userPreferred) || target.entry.id}`);
-				state.lastError.set(null);
-			} catch (err) {
-				state.lastError.set(err.message);
-				log.push("Error", `${action}: ${err.message}`);
-			}
-		}
-
-		async function liveDelete(event) {
-			if (fields.disableLiveSync.current.valueOf()) return;
-			const target = await mediaForEvent(event.mediaId);
-			if (!target) return log.push("Warning", `delete: media not found (${event.mediaId || "unknown"})`);
-			try {
-				await removeEntry(target.type, target.entry);
-				state.lastError.set(null);
-			} catch (err) {
-				state.lastError.set(err.message);
-				log.push("Error", `delete: ${err.message}`);
-			}
-		}
-
-		async function manualSync(type) {
-			state.busy.set(true);
-			state.lastError.set(null);
-			const entries = anilistEntries(type).filter((entry) => !unwrap(entry.private));
-			let synced = 0;
-			let skipped = 0;
-			state.status.set(`Syncing ${type}...`);
-			log.push("Info", `Manual ${type} sync started with ${entries.length} AniList entries`);
-			for (const entry of entries) {
-				if (!state.busy.get()) break;
-				try {
-					if (!entry.media || !entry.media.idMal) {
-						skipped++;
-						continue;
-					}
-					await pushEntry(type, entry, "manual", {});
-					synced++;
-					await new Promise((resolve) => ctx.setTimeout(resolve, 500));
-				} catch (err) {
-					skipped++;
-					log.push("Error", `manual: ${err.message}`);
-					await new Promise((resolve) => ctx.setTimeout(resolve, 1000));
-				}
-			}
-			state.status.set(`Manual ${type} sync finished: ${synced} synced, ${skipped} skipped`);
-			ctx.toast.success(`AsunaTracks ${type} sync finished`);
-			state.busy.set(false);
-		}
-
-		function textInput(label, fieldRef, placeholder, password) {
-			return tray.input({ label, placeholder, fieldRef, type: password ? "password" : "text", disabled: state.busy.get() });
-		}
-
-		function logsModal(trigger) {
-			return tray.modal({
-				trigger,
-				title: "AsunaTracks Sync Logs",
-				className: "max-w-4xl",
-				onOpenChange: ctx.eventHandler("asunatracks-sync:logs-open", ({ open }) => log.open.set(open)),
-				items: [
-					tray.button("Clear", { intent: "gray-subtle", size: "md", className: "w-fit", onClick: ctx.eventHandler("asunatracks-sync:logs-clear", () => log.clear()) }),
-					tray.div(
-						log.entries().length
-							? log.entries().map(([message, level], index) => tray.text(message, { className: `font-mono text-sm whitespace-pre-wrap break-all px-2 py-1 ${level === "Error" ? "text-red-200" : level === "Success" ? "text-green-200" : level === "Warning" ? "text-orange-200" : "text-[--muted]"} ${index % 2 === 0 ? "bg-gray-900" : "bg-gray-800"}` }))
-							: [tray.text("No logs yet.", { className: "text-center p-5 text-[--muted]" })],
-						{ className: "max-h-[34rem] overflow-y-auto border rounded-lg bg-gray-950" },
-					),
-				],
-			});
-		}
-
-		function notificationsModal(trigger) {
-			return tray.modal({
-				trigger,
-				title: "AsunaTracks Sync Notifications",
-				className: "max-w-3xl bg-[#10172f]",
-				onOpenChange: ctx.eventHandler("asunatracks-sync:notifications-open", ({ open }) => notifications.open.set(open)),
-				items: [
-					tray.flex([
-						tray.button("Mark all as Read", { intent: "gray-subtle", size: "md", className: "w-fit bg-[#172142] border border-[#26355f]", disabled: notifications.unreads.get() <= 0, onClick: ctx.eventHandler("asunatracks-sync:notifications-read", () => notifications.markAllRead()) }),
-						tray.button("Delete all", { intent: "alert-subtle", size: "md", className: "w-fit", disabled: notifications.entries().length <= 0, onClick: ctx.eventHandler("asunatracks-sync:notifications-delete", () => notifications.deleteAll()) }),
-					]),
-					tray.div(
-						notifications.entries().length
-							? notifications.entries().slice().reverse().map((entry) => {
-								const eventId = String(entry.id).replace(/[^a-zA-Z0-9_-]/g, "-");
-								return tray.div([
-									entry.unread ? tray.div([], { className: "absolute w-3 h-3 rounded-full bg-red-500 border border-white", style: { right: "-0.25rem", top: "-0.25rem" } }) : [],
-									tray.flex([
-										entry.image ? tray.img({ src: entry.image, width: "52px", className: "rounded-md shrink-0" }) : tray.div([], { className: "w-[52px] h-[70px] rounded-md bg-[#202a4b] shrink-0" }),
-										tray.div([
-											tray.text(entry.title, { className: "font-bold text-base text-[#eef3ff] line-clamp-1" }),
-											tray.div(Object.entries(entry.details || {}).filter(([, value]) => value !== undefined && value !== "").map(([key, value]) => tray.p([tray.span(`${readableKey(key)}: `, { className: "text-[#7f8ab8] text-xs" }), tray.span(String(value), { className: "font-bold text-[#e6ebff] text-xs" })])), { className: "grid grid-cols-2 gap-x-4" }),
-											tray.text(formatTimestamp(entry.timestamp), { className: "text-xs text-[#7f8ab8] mt-1" }),
-										], { className: "flex-1" }),
-										tray.stack([
-											tray.button("Delete", { intent: "alert-subtle", size: "sm", className: "w-fit text-xs px-2 py-1", onClick: ctx.eventHandler(`asunatracks-sync:notification-delete:${eventId}`, () => notifications.delete(entry.id)) }),
-											entry.unread ? tray.button("Read", { intent: "success-subtle", size: "sm", className: "w-fit text-xs px-2 py-1", onClick: ctx.eventHandler(`asunatracks-sync:notification-read:${eventId}`, () => notifications.markRead(entry.id)) }) : [],
-										], { className: "items-end shrink-0", gap: 1 }),
-									], { className: "items-start gap-3" }),
-								], { className: "relative p-3 rounded-md border bg-[#172142] border-[#2d3d6f] mb-2" });
-							})
-							: [tray.text("No Notifications", { className: "text-center p-5 text-[#7f8ab8] border rounded-md bg-[#172142]" })],
-						{ className: "max-h-[30rem] overflow-y-auto mt-2 pr-1" },
-					),
-				],
-			});
-		}
-
-		function settingsModal(trigger, signedIn) {
-			return tray.modal({
-				trigger,
-				title: "AsunaTracks Sync Settings",
-				className: "max-w-lg",
-				items: [
-					textInput("AsunaTracks URL", fields.baseUrl, "https://asunatracks.space", false),
-					signedIn
-						? tray.button("Sign out", { intent: "alert-subtle", size: "md", loading: state.busy.get(), onClick: ctx.eventHandler("asunatracks-sync:logout", logout) })
-						: [textInput("Username", fields.username, "username or email", false), textInput("Password", fields.password, "password", true), tray.button("Sign in", { intent: "primary", size: "md", loading: state.busy.get(), onClick: ctx.eventHandler("asunatracks-sync:login", login) })],
-				],
-			});
-		}
-
-		const ui = {
-			render() {
-				const signedIn = !!state.token.get();
-				const user = state.user.get() || {};
-				const username = user.username || user.display_name || "Username";
-				const total = state.success.get() + state.fail.get();
-				const successRate = total ? ((state.success.get() / total) * 100).toFixed(2) : "0.00";
-				const lastState = state.lastError.get() ? `Failed (${state.lastError.get()})` : state.status.get();
-				const error = state.lastError.get() ? tray.text(state.lastError.get(), { className: "break-normal bg-red-500/20 text-red-100 text-xs border border-red-400/30 rounded-md px-2 py-1 line-clamp-2" }) : [];
-				const notificationTrigger = notificationsModal(tray.button(`Bell${notifications.unreads.get() ? ` ${notifications.unreads.get()}` : ""}`, { intent: "gray-subtle", size: "md", onClick: ctx.eventHandler("asunatracks-sync:notifications-trigger", () => undefined), className: "h-8 rounded-full bg-transparent border-0 p-0 text-xs font-bold text-[#f4b86a]", style: { width: "42px" } }));
-				const logs = logsModal(tray.button("</>", { intent: "gray-subtle", size: "md", onClick: ctx.eventHandler("asunatracks-sync:logs-trigger", () => undefined), className: "h-10 rounded-md bg-[#202a4b] border border-[#26335b] p-0 text-xs font-bold text-[#d6dcff]", style: { width: "64px" } }));
-				const profileHref = signedIn && username ? `${cleanBaseUrl()}/u/${encodeURIComponent(username)}` : `${cleanBaseUrl()}/login`;
-				const avatarUrl = absoluteUrl(user.avatar_url || user.avatar || user.picture);
-				const profileTrigger = tray.button(avatarUrl ? " " : "PFP", { intent: "gray-subtle", size: "md", onClick: ctx.eventHandler("asunatracks-sync:profile-trigger", () => undefined), className: "h-8 rounded-full bg-[#202a4b] border border-[#26355f] bg-center bg-cover bg-no-repeat p-0 text-xs font-bold text-[#d6dcff]", style: { width: "32px", backgroundImage: avatarUrl ? `url(${avatarUrl})` : "" } });
-				const profileSettings = settingsModal(tray.dropdownMenuItem([tray.span(signedIn ? "Settings" : "Sign in")], { onClick: ctx.eventHandler("asunatracks-sync:profile-settings", () => undefined) }), signedIn);
-				const profileMenu = tray.dropdownMenu({
-					trigger: profileTrigger,
-					items: [profileSettings, tray.dropdownMenuItem([tray.a({ items: [tray.span("Open in browser")], href: profileHref, className: "no-underline" })], { disabled: !signedIn }), tray.dropdownMenuItem([tray.span("Sign out")], { className: "text-[--red]", disabled: !signedIn, onClick: ctx.eventHandler("asunatracks-sync:profile-signout", logout) })],
-				});
-
-				return tray.div([
-					tray.flex([tray.div([tray.text("AsunaTracks", { className: "font-extrabold text-2xl leading-none text-[#e6ebff]" }), tray.text("for Seanime", { className: "text-xs font-semibold text-[#7f8ab8] mt-1" })], { className: "flex-1" }), tray.flex([notificationTrigger, profileMenu], { className: "items-start gap-1" })], { className: "items-start" }),
-					tray.div([tray.text("Welcome,", { className: "font-bold text-xs text-[#eef3ff]" }), tray.text(signedIn ? username : "Sign in", { className: "font-extrabold text-2xl leading-none text-[#eef3ff] line-clamp-1" })], { className: "rounded-sm bg-[#315094] px-3 py-3 mt-3 mb-3" }),
-					error,
-					tray.flex([
-						logs,
-						tray.tooltip(tray.button("Sync", { intent: "gray-subtle", size: "md", disabled: !signedIn, onClick: ctx.eventHandler("asunatracks-sync:me", async () => { state.busy.set(true); try { const res = await api("/public/api/me"); const data = await res.json(); setToken(state.token.get(), data.user || null); state.status.set("Success (200)"); state.lastError.set(null); ctx.toast.success("AsunaTracks account check passed"); } catch (err) { state.lastError.set(err.message); } finally { state.busy.set(false); } }), className: "h-10 rounded-md bg-[#202a4b] border border-[#26335b] p-0 text-xs font-bold text-[#d6dcff]", style: { width: "64px" } }), { text: "Check account" }),
-						tray.tooltip(tray.button("Anime", { intent: "gray-subtle", size: "md", disabled: !signedIn, onClick: ctx.eventHandler("asunatracks-sync:manual-anime", () => manualSync("anime")), className: "h-10 rounded-md bg-[#202a4b] border border-[#26335b] p-0 text-xs font-bold text-[#d6dcff]", style: { width: "64px" } }), { text: "Sync Anime" }),
-						tray.tooltip(tray.button("Manga", { intent: "gray-subtle", size: "md", disabled: !signedIn, onClick: ctx.eventHandler("asunatracks-sync:manual-manga", () => manualSync("manga")), className: "h-10 rounded-md bg-[#202a4b] border border-[#26335b] p-0 text-xs font-bold text-[#d6dcff]", style: { width: "64px" } }), { text: "Sync Manga" }),
-					], { className: "grid grid-cols-4 gap-2 mb-3" }),
-					tray.div([
-						tray.switch("Temporarily disable livesync", { fieldRef: fields.disableLiveSync, disabled: !signedIn, onChange: ctx.eventHandler("asunatracks-sync:disable-live", ({ value }) => $storage.set("asunatracks-sync:disable-live-sync", value)) }),
-						tray.switch("Skip adult entries for livesync", { fieldRef: fields.skipAdult, disabled: !signedIn, onChange: ctx.eventHandler("asunatracks-sync:skip-adult", ({ value }) => $storage.set("asunatracks-sync:skip-adult", value)) }),
-						tray.switch("Disable badge for non-critical notifications", { fieldRef: fields.suppressBadge, onChange: ctx.eventHandler("asunatracks-sync:suppress-badge", ({ value }) => $storage.set("asunatracks-sync:suppress-badge", value)) }),
-					], { className: "font-bold text-sm text-[#dbe4ff] space-y-2" }),
-					tray.div([], { className: "h-14" }),
-					tray.div([tray.text(`Connections made: ${total}`, { className: "text-[10px] leading-tight text-[#b7c0e6]" }), tray.text(`Successful connections: ${state.success.get()} (${successRate}%)`, { className: "text-[10px] leading-tight text-[#b7c0e6]" }), tray.p([tray.span("Last connection: ", { className: "text-[#b7c0e6]" }), tray.span(lastState, { className: state.lastError.get() ? "text-red-300" : "text-green-300" })], { className: "text-[10px] leading-tight" })], { className: "mt-4" }),
-					tray.flex([tray.anchor("Privacy Policy", { href: "https://asunatracks.space/info/privacy", className: "no-underline hover:underline text-[#b7c0e6]" }), tray.span("|", { className: "text-[#6070a8]" }), tray.anchor("Terms", { href: "https://asunatracks.space/info/terms", className: "no-underline hover:underline text-[#b7c0e6]" })], { className: "justify-center text-xs mt-2 gap-2" }),
-				], { className: "m-1 p-3 rounded-md border bg-[#10172f] text-[#e7ecff]", style: { borderColor: "#26355f", minHeight: "22rem" } });
-			},
-		};
-
+		async function logout() { state.busy.set(true); try { if (state.token.get()) await api("/public/api/auth/logout", { method: "POST" }).catch(() => undefined); setToken(null, null); state.status.set("Signed out"); log.push("Info", "Signed out"); ctx.toast.info("Signed out of AsunaTracks Sync"); } finally { state.busy.set(false); } }
+		function toISODate(date) { const year = unwrap(date && date.year); if (!year) return undefined; const month = unwrap(date && date.month) || 1; const day = unwrap(date && date.day) || 1; return new Date(Date.UTC(year, month - 1, day)).toISOString().substring(0, 10); }
+		function normalizeStatus(type, status) { if (!status) return undefined; const anime = { CURRENT: "watching", REPEATING: "rewatching", COMPLETED: "completed", PLANNING: "planning", DROPPED: "dropped", PAUSED: "paused" }; const manga = { CURRENT: "reading", REPEATING: "rereading", COMPLETED: "completed", PLANNING: "planning", DROPPED: "dropped", PAUSED: "paused" }; return type === "anime" ? anime[status] : manga[status]; }
+		function isCustomSource(mediaId) { return (mediaId || 0) >= 2 ** 31; }
+		function anilistEntries(type) { const collection = type === "anime" ? $anilist.getAnimeCollection(false).MediaListCollection : $anilist.getMangaCollection(false).MediaListCollection; return (collection && collection.lists ? collection.lists : []).flatMap((list) => list.entries || []).filter((entry) => entry && entry.media && !isCustomSource(entry.media.id)); }
+		async function mediaForEvent(mediaId) { if (!mediaId) return null; try { const anime = await ctx.anime.getAnimeEntry(mediaId); const entry = anilistEntries("anime").find((item) => item.media.id === mediaId || item.id === (anime.listData && anime.listData.id)); if (entry) return { type: "anime", entry }; } catch {} const manga = anilistEntries("manga").find((item) => item.media.id === mediaId); return manga ? { type: "manga", entry: manga } : null; }
+		function payloadFromEntry(type, entry, overrides) { const malId = unwrap(entry.media && entry.media.idMal); if (!malId) return null; return { media_type: type, mal_id: malId, status: normalizeStatus(type, entry.status), progress: unwrap(entry.progress) || 0, repeat_count: unwrap(entry.repeat) || 0, score: unwrap(entry.score), notes: unwrap(entry.notes), start_date: toISODate(entry.startedAt), finish_date: toISODate(entry.completedAt), ...(overrides || {}) }; }
+		function readableKey(value) { return String(value).replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
+		function formatTimestamp(value) { const date = new Date(value); return `${date.toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "numeric" })} ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`; }
+		function notify(title, entry, details) { notifications.push({ title, image: entry.media && entry.media.coverImage ? entry.media.coverImage.large || entry.media.coverImage.medium : undefined, details }); }
+		async function pushEntry(type, entry, reason, overrides) { if (!state.token.get()) return log.push("Warning", `${reason}: skipped because AsunaTracks is not signed in`); if (fields.skipAdult.current.valueOf() && entry.media && entry.media.isAdult && entry.media.isAdult.valueOf()) return log.push("Warning", `${reason}: skipped adult entry`); if (unwrap(entry.private)) return log.push("Warning", `${reason}: skipped private entry`); const body = payloadFromEntry(type, entry, overrides); if (!body) return log.push("Warning", `${reason}: skipped ${(entry.media && entry.media.title && entry.media.title.userPreferred) || entry.id} because it has no MAL ID`); await api("/public/api/me/list", { method: "POST", body: JSON.stringify(body) }); const title = (entry.media && entry.media.title && entry.media.title.userPreferred) || String(body.mal_id); log.push("Success", `${reason}: synced ${title}`); notify(`Updated ${title}`, entry, { Action: reason, Type: type, Status: body.status, Progress: body.progress, Score: body.score, Repeat: body.repeat_count }); }
+		async function removeEntry(type, entry) { const malId = unwrap(entry.media && entry.media.idMal); if (!state.token.get() || !malId) return; await api("/public/api/me/list/remove", { method: "POST", body: JSON.stringify({ media_type: type, mal_id: malId }) }); const title = (entry.media && entry.media.title && entry.media.title.userPreferred) || String(malId); log.push("Success", `delete: removed ${title}`); notify(`Removed ${title}`, entry, { Action: "delete", Type: type, Status: "Deleted" }); }
+		async function liveSync(action, event, preDataKey, buildOverrides) { if (fields.disableLiveSync.current.valueOf()) { $store.set(preDataKey, null); return log.push("Info", `${action}: live sync is disabled`); } const data = $store.get(preDataKey); $store.set(preDataKey, null); if (!data || data.mediaId !== event.mediaId) return log.push("Warning", `${action}: missing pre-update payload`); const target = await mediaForEvent(event.mediaId); if (!target) return log.push("Warning", `${action}: media not found (${event.mediaId || "unknown"})`); try { await pushEntry(target.type, target.entry, action, buildOverrides(data, target.type)); state.status.set(`Last sync: ${(target.entry.media && target.entry.media.title && target.entry.media.title.userPreferred) || target.entry.id}`); state.lastError.set(null); } catch (err) { state.lastError.set(err.message); log.push("Error", `${action}: ${err.message}`); } }
+		async function liveDelete(event) { if (fields.disableLiveSync.current.valueOf()) return; const target = await mediaForEvent(event.mediaId); if (!target) return log.push("Warning", `delete: media not found (${event.mediaId || "unknown"})`); try { await removeEntry(target.type, target.entry); state.lastError.set(null); } catch (err) { state.lastError.set(err.message); log.push("Error", `delete: ${err.message}`); } }
+		async function manualSync(type) { state.busy.set(true); state.lastError.set(null); const entries = anilistEntries(type).filter((entry) => !unwrap(entry.private)); let synced = 0; let skipped = 0; state.status.set(`Syncing ${type}...`); log.push("Info", `Manual ${type} sync started with ${entries.length} AniList entries`); for (const entry of entries) { if (!state.busy.get()) break; try { if (!entry.media || !entry.media.idMal) { skipped++; continue; } await pushEntry(type, entry, "manual", {}); synced++; await new Promise((resolve) => ctx.setTimeout(resolve, 500)); } catch (err) { skipped++; log.push("Error", `manual: ${err.message}`); await new Promise((resolve) => ctx.setTimeout(resolve, 1000)); } } state.status.set(`Manual ${type} sync finished: ${synced} synced, ${skipped} skipped`); ctx.toast.success(`AsunaTracks ${type} sync finished`); state.busy.set(false); }
+		function textInput(label, fieldRef, placeholder, password) { return tray.input({ label, placeholder, fieldRef, type: password ? "password" : "text", disabled: state.busy.get() }); }
+		function logsModal(trigger) { return tray.modal({ trigger, title: "AsunaTracks Sync Logs", className: "max-w-4xl", onOpenChange: ctx.eventHandler("asunatracks-sync:logs-open", ({ open }) => log.open.set(open)), items: [tray.button("Clear", { intent: "gray-subtle", size: "md", className: "w-fit", onClick: ctx.eventHandler("asunatracks-sync:logs-clear", () => log.clear()) }), tray.div(log.entries().length ? log.entries().map(([message, level], index) => tray.text(message, { className: `font-mono text-sm whitespace-pre-wrap break-all px-2 py-1 ${level === "Error" ? "text-red-200" : level === "Success" ? "text-green-200" : level === "Warning" ? "text-orange-200" : "text-[--muted]"} ${index % 2 === 0 ? "bg-gray-900" : "bg-gray-800"}` })) : [tray.text("No logs yet.", { className: "text-center p-5 text-[--muted]" })], { className: "max-h-[34rem] overflow-y-auto border rounded-lg bg-gray-950" })] }); }
+		function notificationsModal(trigger) { return tray.modal({ trigger, title: "AsunaTracks Sync Notifications", className: "max-w-3xl bg-[#10172f]", onOpenChange: ctx.eventHandler("asunatracks-sync:notifications-open", ({ open }) => notifications.open.set(open)), items: [tray.flex([tray.button("Mark all as Read", { intent: "gray-subtle", size: "md", className: "w-fit bg-[#172142] border border-[#26355f]", disabled: notifications.unreads.get() <= 0, onClick: ctx.eventHandler("asunatracks-sync:notifications-read", () => notifications.markAllRead()) }), tray.button("Delete all", { intent: "alert-subtle", size: "md", className: "w-fit", disabled: notifications.entries().length <= 0, onClick: ctx.eventHandler("asunatracks-sync:notifications-delete", () => notifications.deleteAll()) })]), tray.div(notifications.entries().length ? notifications.entries().slice().reverse().map((entry) => { const eventId = String(entry.id).replace(/[^a-zA-Z0-9_-]/g, "-"); return tray.div([entry.unread ? tray.div([], { className: "absolute w-3 h-3 rounded-full bg-red-500 border border-white", style: { right: "-0.25rem", top: "-0.25rem" } }) : [], tray.flex([entry.image ? tray.img({ src: entry.image, width: "52px", className: "rounded-md shrink-0" }) : tray.div([], { className: "w-[52px] h-[70px] rounded-md bg-[#202a4b] shrink-0" }), tray.div([tray.text(entry.title, { className: "font-bold text-base text-[#eef3ff] line-clamp-1" }), tray.div(Object.entries(entry.details || {}).filter(([, value]) => value !== undefined && value !== "").map(([key, value]) => tray.p([tray.span(`${readableKey(key)}: `, { className: "text-[#7f8ab8] text-xs" }), tray.span(String(value), { className: "font-bold text-[#e6ebff] text-xs" })])), { className: "grid grid-cols-2 gap-x-4" }), tray.text(formatTimestamp(entry.timestamp), { className: "text-xs text-[#7f8ab8] mt-1" })], { className: "flex-1" }), tray.stack([tray.button("Delete", { intent: "alert-subtle", size: "sm", className: "w-fit text-xs px-2 py-1", onClick: ctx.eventHandler(`asunatracks-sync:notification-delete:${eventId}`, () => notifications.delete(entry.id)) }), entry.unread ? tray.button("Read", { intent: "success-subtle", size: "sm", className: "w-fit text-xs px-2 py-1", onClick: ctx.eventHandler(`asunatracks-sync:notification-read:${eventId}`, () => notifications.markRead(entry.id)) }) : []], { className: "items-end shrink-0", gap: 1 })], { className: "items-start gap-3" })], { className: "relative p-3 rounded-md border bg-[#172142] border-[#2d3d6f] mb-2" }); }) : [tray.text("No Notifications", { className: "text-center p-5 text-[#7f8ab8] border rounded-md bg-[#172142]" })], { className: "max-h-[30rem] overflow-y-auto mt-2 pr-1" })] }); }
+		function settingsModal(trigger, signedIn) { return tray.modal({ trigger, title: "AsunaTracks Sync Settings", className: "max-w-lg", items: [textInput("AsunaTracks URL", fields.baseUrl, "https://asunatracks.space", false), signedIn ? tray.button("Sign out", { intent: "alert-subtle", size: "md", loading: state.busy.get(), onClick: ctx.eventHandler("asunatracks-sync:logout", logout) }) : [textInput("Username", fields.username, "username or email", false), textInput("Password", fields.password, "password", true), tray.button("Sign in", { intent: "primary", size: "md", loading: state.busy.get(), onClick: ctx.eventHandler("asunatracks-sync:login", login) })]] }); }
+		const ui = { render() {
+			const signedIn = !!state.token.get(); const user = state.user.get() || {}; const username = user.username || user.display_name || "Username"; const total = state.success.get() + state.fail.get(); const successRate = total ? ((state.success.get() / total) * 100).toFixed(2) : "0.00"; const lastState = state.lastError.get() ? `Failed (${state.lastError.get()})` : state.status.get(); const error = state.lastError.get() ? tray.text(state.lastError.get(), { className: "break-normal bg-red-500/20 text-red-100 text-xs border border-red-400/30 rounded-md px-2 py-1 line-clamp-2" }) : [];
+			const notificationTrigger = notificationsModal(tray.button(" ", { intent: "gray-subtle", size: "md", onClick: ctx.eventHandler("asunatracks-sync:notifications-trigger", () => undefined), className: "h-8 rounded-full bg-transparent border-0 p-0 bg-center bg-no-repeat", style: { width: "42px", backgroundImage: `url(${bellIcon})`, backgroundSize: "1rem" } }));
+			const logs = logsModal(tray.button("</>", { intent: "gray-subtle", size: "md", onClick: ctx.eventHandler("asunatracks-sync:logs-trigger", () => undefined), className: "h-10 rounded-md bg-[#202a4b] border border-[#26335b] p-0 text-xs font-bold text-[#d6dcff]", style: { width: "64px" } })); const profileHref = signedIn && username ? `${cleanBaseUrl()}/u/${encodeURIComponent(username)}` : `${cleanBaseUrl()}/login`; const avatarUrl = absoluteUrl(user.avatar_url || user.avatar || user.picture); const profileTrigger = tray.button(avatarUrl ? " " : "PFP", { intent: "gray-subtle", size: "md", onClick: ctx.eventHandler("asunatracks-sync:profile-trigger", () => undefined), className: "h-8 rounded-full bg-[#202a4b] border border-[#26355f] bg-center bg-cover bg-no-repeat p-0 text-xs font-bold text-[#d6dcff]", style: { width: "32px", backgroundImage: avatarUrl ? `url(${avatarUrl})` : "" } }); const profileSettings = settingsModal(tray.dropdownMenuItem([tray.span(signedIn ? "Settings" : "Sign in")], { onClick: ctx.eventHandler("asunatracks-sync:profile-settings", () => undefined) }), signedIn); const profileMenu = tray.dropdownMenu({ trigger: profileTrigger, items: [profileSettings, tray.dropdownMenuItem([tray.a({ items: [tray.span("Open in browser")], href: profileHref, className: "no-underline" })], { disabled: !signedIn }), tray.dropdownMenuItem([tray.span("Sign out")], { className: "text-[--red]", disabled: !signedIn, onClick: ctx.eventHandler("asunatracks-sync:profile-signout", logout) })] });
+			return tray.div([tray.flex([tray.div([tray.text("AsunaTracks", { className: "font-extrabold text-2xl leading-none text-[#e6ebff]" }), tray.text("for Seanime", { className: "text-xs font-semibold text-[#7f8ab8] mt-1" })], { className: "flex-1" }), tray.flex([notificationTrigger, profileMenu], { className: "items-start gap-1" })], { className: "items-start" }), tray.div([tray.text("Welcome,", { className: "font-bold text-xs text-[#eef3ff]" }), tray.text(signedIn ? username : "Sign in", { className: "font-extrabold text-2xl leading-none text-[#eef3ff] line-clamp-1" })], { className: "rounded-sm bg-[#315094] px-3 py-3 mt-3 mb-3" }), error, tray.flex([logs, tray.tooltip(tray.button("Sync", { intent: "gray-subtle", size: "md", disabled: !signedIn, onClick: ctx.eventHandler("asunatracks-sync:me", async () => { state.busy.set(true); try { const res = await api("/public/api/me"); const data = await res.json(); setToken(state.token.get(), data.user || null); state.status.set("Success (200)"); state.lastError.set(null); ctx.toast.success("AsunaTracks account check passed"); } catch (err) { state.lastError.set(err.message); } finally { state.busy.set(false); } }), className: "h-10 rounded-md bg-[#202a4b] border border-[#26335b] p-0 text-xs font-bold text-[#d6dcff]", style: { width: "64px" } }), { text: "Check account" }), tray.tooltip(tray.button("Anime", { intent: "gray-subtle", size: "md", disabled: !signedIn, onClick: ctx.eventHandler("asunatracks-sync:manual-anime", () => manualSync("anime")), className: "h-10 rounded-md bg-[#202a4b] border border-[#26335b] p-0 text-xs font-bold text-[#d6dcff]", style: { width: "64px" } }), { text: "Sync Anime" }), tray.tooltip(tray.button("Manga", { intent: "gray-subtle", size: "md", disabled: !signedIn, onClick: ctx.eventHandler("asunatracks-sync:manual-manga", () => manualSync("manga")), className: "h-10 rounded-md bg-[#202a4b] border border-[#26335b] p-0 text-xs font-bold text-[#d6dcff]", style: { width: "64px" } }), { text: "Sync Manga" })], { className: "grid grid-cols-4 gap-2 mb-3" }), tray.div([tray.switch("Temporarily disable livesync", { fieldRef: fields.disableLiveSync, disabled: !signedIn, onChange: ctx.eventHandler("asunatracks-sync:disable-live", ({ value }) => $storage.set("asunatracks-sync:disable-live-sync", value)) }), tray.switch("Skip adult entries for livesync", { fieldRef: fields.skipAdult, disabled: !signedIn, onChange: ctx.eventHandler("asunatracks-sync:skip-adult", ({ value }) => $storage.set("asunatracks-sync:skip-adult", value)) }), tray.switch("Disable badge for non-critical notifications", { fieldRef: fields.suppressBadge, onChange: ctx.eventHandler("asunatracks-sync:suppress-badge", ({ value }) => $storage.set("asunatracks-sync:suppress-badge", value)) })], { className: "font-bold text-sm text-[#dbe4ff] space-y-2" }), tray.div([], { className: "h-14" }), tray.div([tray.text(`Connections made: ${total}`, { className: "text-[10px] leading-tight text-[#b7c0e6]" }), tray.text(`Successful connections: ${state.success.get()} (${successRate}%)`, { className: "text-[10px] leading-tight text-[#b7c0e6]" }), tray.p([tray.span("Last connection: ", { className: "text-[#b7c0e6]" }), tray.span(lastState, { className: state.lastError.get() ? "text-red-300" : "text-green-300" })], { className: "text-[10px] leading-tight" })], { className: "mt-4" }), tray.flex([tray.anchor("Privacy Policy", { href: "https://asunatracks.space/info/privacy", className: "no-underline hover:underline text-[#b7c0e6]" }), tray.span("|", { className: "text-[#6070a8]" }), tray.anchor("Terms", { href: "https://asunatracks.space/info/terms", className: "no-underline hover:underline text-[#b7c0e6]" })], { className: "justify-center text-xs mt-2 gap-2" })], { className: "m-1 p-3 rounded-md border bg-[#10172f] text-[#e7ecff]", style: { borderColor: "#26355f", minHeight: "22rem" } });
+		} };
 		$store.watch("asunatracks-sync:post-update", (event) => liveSync("update", event, "asunatracks-sync:pre-update", (data, type) => ({ status: normalizeStatus(type, data.status), progress: data.progress, score: typeof data.scoreRaw === "number" ? data.scoreRaw : undefined, start_date: toISODate(data.startedAt), finish_date: toISODate(data.completedAt) })));
 		$store.watch("asunatracks-sync:post-progress", (event) => liveSync("progress", event, "asunatracks-sync:pre-progress", (data, type) => ({ status: normalizeStatus(type, data.progress && data.progress === data.totalCount ? "COMPLETED" : data.status), progress: data.progress })));
 		$store.watch("asunatracks-sync:post-repeat", (event) => liveSync("repeat", event, "asunatracks-sync:pre-repeat", (data) => ({ repeat_count: data.repeat })));
 		$store.watch("asunatracks-sync:post-delete", liveDelete);
-
 		tray.render(() => ui.render());
-		ctx.effect(() => {
-			if (!state.token.get()) return tray.updateBadge({ number: 1, intent: "error" });
-			if (notifications.unreads.get() > 0 && !fields.suppressBadge.current.valueOf()) return tray.updateBadge({ number: notifications.unreads.get(), intent: "warning" });
-			if (state.busy.get() && !fields.suppressBadge.current.valueOf()) return tray.updateBadge({ number: 1, intent: "warning" });
-			return tray.updateBadge({ number: 0 });
-		}, [state.token, state.busy, notifications.unreads]);
-
-		if (state.token.get()) {
-			api("/public/api/me")
-				.then((res) => res.json())
-				.then((data) => {
-					setToken(state.token.get(), data.user || state.user.get());
-					state.status.set(`Signed in${data.user && data.user.username ? ` as ${data.user.username}` : ""}`);
-					log.push("Success", "Existing AsunaTracks token is valid");
-				})
-				.catch((err) => {
-					state.lastError.set(err.message);
-					state.status.set("Please sign in again");
-					log.push("Error", `Token check failed: ${err.message}`);
-				});
-		}
+		ctx.effect(() => { if (!state.token.get()) return tray.updateBadge({ number: 1, intent: "error" }); if (notifications.unreads.get() > 0 && !fields.suppressBadge.current.valueOf()) return tray.updateBadge({ number: notifications.unreads.get(), intent: "warning" }); if (state.busy.get() && !fields.suppressBadge.current.valueOf()) return tray.updateBadge({ number: 1, intent: "warning" }); return tray.updateBadge({ number: 0 }); }, [state.token, state.busy, notifications.unreads]);
+		if (state.token.get()) { api("/public/api/me").then((res) => res.json()).then((data) => { setToken(state.token.get(), data.user || state.user.get()); state.status.set(`Signed in${data.user && data.user.username ? ` as ${data.user.username}` : ""}`); log.push("Success", "Existing AsunaTracks token is valid"); }).catch((err) => { state.lastError.set(err.message); state.status.set("Please sign in again"); log.push("Error", `Token check failed: ${err.message}`); }); }
 	});
-
-	$app.onPreUpdateEntry((event) => {
-		$store.set("asunatracks-sync:pre-update", $clone(event));
-		event.next();
-	});
-	$app.onPostUpdateEntry((event) => {
-		$store.set("asunatracks-sync:post-update", $clone(event));
-		event.next();
-	});
-	$app.onPreUpdateEntryProgress((event) => {
-		$store.set("asunatracks-sync:pre-progress", $clone(event));
-		event.next();
-	});
-	$app.onPostUpdateEntryProgress((event) => {
-		$store.set("asunatracks-sync:post-progress", $clone(event));
-		event.next();
-	});
-	$app.onPreUpdateEntryRepeat((event) => {
-		$store.set("asunatracks-sync:pre-repeat", $clone(event));
-		event.next();
-	});
-	$app.onPostUpdateEntryRepeat((event) => {
-		$store.set("asunatracks-sync:post-repeat", $clone(event));
-		event.next();
-	});
-	$app.onPostDeleteEntry((event) => {
-		$store.set("asunatracks-sync:post-delete", $clone(event));
-		event.next();
-	});
+	$app.onPreUpdateEntry((event) => { $store.set("asunatracks-sync:pre-update", $clone(event)); event.next(); });
+	$app.onPostUpdateEntry((event) => { $store.set("asunatracks-sync:post-update", $clone(event)); event.next(); });
+	$app.onPreUpdateEntryProgress((event) => { $store.set("asunatracks-sync:pre-progress", $clone(event)); event.next(); });
+	$app.onPostUpdateEntryProgress((event) => { $store.set("asunatracks-sync:post-progress", $clone(event)); event.next(); });
+	$app.onPreUpdateEntryRepeat((event) => { $store.set("asunatracks-sync:pre-repeat", $clone(event)); event.next(); });
+	$app.onPostUpdateEntryRepeat((event) => { $store.set("asunatracks-sync:post-repeat", $clone(event)); event.next(); });
+	$app.onPostDeleteEntry((event) => { $store.set("asunatracks-sync:post-delete", $clone(event)); event.next(); });
 }
