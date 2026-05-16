@@ -1,0 +1,28 @@
+{
+  "id": "asunatracks-sync",
+  "name": "AsunaTracks Sync",
+  "version": "0.1.0",
+  "manifestURI": "https://raw.githubusercontent.com/Kolex06/asunatracks-seanime-sync/main/asunatracks-sync.json",
+  "language": "typescript",
+  "type": "plugin",
+  "description": "Sync Seanime AniList progress and list changes to AsunaTracks.",
+  "author": "AsunaTracks",
+  "icon": "https://asunatracks.space/static/asunatracks-logo.png",
+  "website": "https://asunatracks.space",
+  "readme": "https://raw.githubusercontent.com/Kolex06/asunatracks-seanime-sync/main/README.md",
+  "notes": "Sign in with your AsunaTracks account from the tray, then use manual sync or live sync from Seanime list updates.",
+  "lang": "en",
+  "payloadURI": "https://raw.githubusercontent.com/Kolex06/asunatracks-seanime-sync/main/plugins/AsunaTracksSync/provider.ts",
+  "plugin": {
+    "version": "1",
+    "permissions": {
+      "scopes": ["storage", "anilist", "database", "anilist-token"],
+      "allow": {
+        "networkAccess": {
+          "allowedDomains": ["asunatracks.space", "localhost", "127.0.0.1"],
+          "reasoning": "Required to authenticate with AsunaTracks and sync the current user's anime and manga list through the public API."
+        }
+      }
+    }
+  }
+}
