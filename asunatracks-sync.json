@@ -1,7 +1,7 @@
 {
   "id": "asunatracks-sync",
   "name": "AsunaTracks Sync",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "manifestURI": "https://raw.githubusercontent.com/Kolex06/asunatracks-seanime-sync/main/asunatracks-sync.json",
   "language": "typescript",
   "type": "plugin",
@@ -20,10 +20,19 @@
   "plugin": {
     "version": "1",
     "permissions": {
-      "scopes": ["storage", "anilist", "database", "anilist-token"],
+      "scopes": [
+        "storage",
+        "anilist",
+        "database",
+        "anilist-token"
+      ],
       "allow": {
         "networkAccess": {
-          "allowedDomains": ["asunatracks.space", "localhost", "127.0.0.1"],
+          "allowedDomains": [
+            "asunatracks.space",
+            "localhost",
+            "127.0.0.1"
+          ],
           "reasoning": "Required to authenticate with AsunaTracks and sync the current user's anime and manga list through the public API."
         }
       }
