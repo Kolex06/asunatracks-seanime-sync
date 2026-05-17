@@ -2,7 +2,7 @@
 
 A Seanime plugin that syncs Seanime/AniList list changes into AsunaTracks.
 
-Keep AsunaTracks up to date while using Seanime as your main anime and manga tracker. The extension can live-sync list edits as you watch or read, and it also includes manual anime/manga sync buttons for catching up an existing library.
+Keep AsunaTracks up to date from Seanime. The extension can live-sync list edits as you watch or read in Seanime, and it also includes manual anime/manga sync buttons for catching up an existing library in AsunaTracks.
 
 ## What It Does
 
