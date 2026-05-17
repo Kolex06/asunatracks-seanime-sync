@@ -24,6 +24,7 @@ Then open the AsunaTracks Sync tray icon, sign in with your AsunaTracks account,
 
 ## Additional Notes
 
+- You must be logged in with AniList in Seanime and enable `Automatically update progress` in the app settings for live sync to work.
 - Seanime/AniList media is matched to AsunaTracks through MAL IDs when available.
 - Private AniList entries are skipped during sync.
 - You can disable live sync from the tray at any time without signing out.
